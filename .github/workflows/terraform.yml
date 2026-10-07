@@ -1,0 +1,168 @@
+# terraform.yml
+#
+# Runs on PRs that touch infra/**: fmt-check, init, validate, plan.
+# Posts the plan output as a sticky comment on the PR so reviewers can
+# inspect infra changes before approving. Never applies on PRs.
+#
+# Auth: GitHub Actions OIDC → assume github-actions-oidc IAM role.
+# Concurrency: one plan per PR branch; superseded runs are cancelled.
+
+name: Terraform Plan
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths: ["infra/**", ".github/workflows/terraform.yml"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write       # OIDC token exchange
+  pull-requests: write  # post plan comment
+
+jobs:
+  terraform-plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform/main
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Forks and clones may not have AWS configured. Skip only the plan steps
+      # when the role secret is absent; never print the secret value.
+      - name: Check AWS role configuration
+        id: aws-config
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+        run: |
+          if [ -n "$AWS_ROLE_ARN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip Terraform plan when AWS role is not configured
+        if: steps.aws-config.outputs.configured != 'true'
+        run: echo "AWS_ROLE_ARN is not configured; Terraform plan was skipped."
+
+      # ── AWS auth via OIDC ──────────────────────────────────────────────────
+      - name: Configure AWS credentials (OIDC)
+        if: steps.aws-config.outputs.configured == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      # ── Terraform setup ────────────────────────────────────────────────────
+      - name: Setup Terraform
+        if: steps.aws-config.outputs.configured == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+          terraform_wrapper: true   # exposes step outputs (.stdout / .stderr)
+
+      # ── Format check ──────────────────────────────────────────────────────
+      - name: Terraform fmt
+        if: steps.aws-config.outputs.configured == 'true'
+        id: fmt
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      # ── Init ──────────────────────────────────────────────────────────────
+      - name: Terraform init
+        if: steps.aws-config.outputs.configured == 'true'
+        id: init
+        run: terraform init -input=false
+
+      # ── Validate ──────────────────────────────────────────────────────────
+      - name: Terraform validate
+        if: steps.aws-config.outputs.configured == 'true'
+        id: validate
+        run: terraform validate -no-color
+
+      # ── Plan ──────────────────────────────────────────────────────────────
+      - name: Terraform plan
+        if: steps.aws-config.outputs.configured == 'true'
+        id: plan
+        run: terraform plan -no-color -input=false
+        continue-on-error: true   # post comment even when plan fails
+
+      # ── Sticky PR comment ─────────────────────────────────────────────────
+      - name: Post plan as PR comment
+        if: steps.aws-config.outputs.configured == 'true'
+        uses: actions/github-script@v7
+        env:
+          PLAN_STDOUT: ${{ steps.plan.outputs.stdout }}
+          PLAN_STDERR: ${{ steps.plan.outputs.stderr }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const header = '<!-- terraform-plan-comment -->';
+            const fmt    = '${{ steps.fmt.outcome }}';
+            const init   = '${{ steps.init.outcome }}';
+            const val    = '${{ steps.validate.outcome }}';
+            const plan   = '${{ steps.plan.outcome }}';
+
+            const planOut  = process.env.PLAN_STDOUT || '';
+            const planErr  = process.env.PLAN_STDERR || '';
+            const planText = planOut.trim() || planErr.trim() || '(no output)';
+
+            const icon = (outcome) => outcome === 'success' ? '✅' : '❌';
+
+            const body = [
+              header,
+              '## Terraform Plan',
+              '',
+              `| Step | Result |`,
+              `|------|--------|`,
+              `| fmt  | ${icon(fmt)}  \`${fmt}\` |`,
+              `| init | ${icon(init)} \`${init}\` |`,
+              `| validate | ${icon(val)} \`${val}\` |`,
+              `| plan | ${icon(plan)} \`${plan}\` |`,
+              '',
+              '<details><summary>Show Plan</summary>',
+              '',
+              '```hcl',
+              planText,
+              '```',
+              '',
+              '</details>',
+              '',
+              `_Triggered by @${{ github.actor }} on \`${{ github.head_ref }}\`_`,
+            ].join('\n');
+
+            // Find an existing plan comment to update (sticky behaviour).
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.startsWith(header));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner:        context.repo.owner,
+                repo:         context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      # Fail the job if the plan itself failed (after comment is posted).
+      - name: Check plan status
+        if: steps.aws-config.outputs.configured == 'true' && steps.plan.outcome == 'failure'
+        run: exit 1

@@ -1,0 +1,62 @@
+# terraform-apply.yml
+#
+# Applies Terraform on manual trigger (workflow_dispatch).
+# After a PR plan comment shows the expected diff, go to Actions → Terraform Apply
+# → Run workflow, type "apply" in the confirm box, and click Run.
+#
+# Using workflow_dispatch instead of a GitHub Environment approval gate because
+# Environment protection rules require GitHub Pro on private repos.
+#
+# Auth: GitHub Actions OIDC → assume github-actions-oidc IAM role.
+# Concurrency: cancel any in-flight apply if a second one is triggered.
+
+name: Terraform Apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'apply' to confirm you have reviewed the plan"
+        required: true
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write  # OIDC token exchange
+
+jobs:
+  terraform-apply:
+    name: Apply
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'apply'
+    defaults:
+      run:
+        working-directory: infra/terraform/main
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # ── AWS auth via OIDC ──────────────────────────────────────────────────
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      # ── Terraform setup ────────────────────────────────────────────────────
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      # ── Init + Apply ───────────────────────────────────────────────────────
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform apply
+        run: terraform apply -auto-approve -input=false
