@@ -35,8 +35,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # Forks and clones may not have AWS configured. Skip only the plan steps
+      # when the role secret is absent; never print the secret value.
+      - name: Check AWS role configuration
+        id: aws-config
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+        run: |
+          if [ -n "$AWS_ROLE_ARN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip Terraform plan when AWS role is not configured
+        if: steps.aws-config.outputs.configured != 'true'
+        run: echo "AWS_ROLE_ARN is not configured; Terraform plan was skipped."
+
       # ── AWS auth via OIDC ──────────────────────────────────────────────────
       - name: Configure AWS credentials (OIDC)
+        if: steps.aws-config.outputs.configured == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
@@ -44,6 +62,7 @@ jobs:
 
       # ── Terraform setup ────────────────────────────────────────────────────
       - name: Setup Terraform
+        if: steps.aws-config.outputs.configured == 'true'
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.7.5"
@@ -51,28 +70,33 @@ jobs:
 
       # ── Format check ──────────────────────────────────────────────────────
       - name: Terraform fmt
+        if: steps.aws-config.outputs.configured == 'true'
         id: fmt
         run: terraform fmt -check -recursive
         continue-on-error: true
 
       # ── Init ──────────────────────────────────────────────────────────────
       - name: Terraform init
+        if: steps.aws-config.outputs.configured == 'true'
         id: init
         run: terraform init -input=false
 
       # ── Validate ──────────────────────────────────────────────────────────
       - name: Terraform validate
+        if: steps.aws-config.outputs.configured == 'true'
         id: validate
         run: terraform validate -no-color
 
       # ── Plan ──────────────────────────────────────────────────────────────
       - name: Terraform plan
+        if: steps.aws-config.outputs.configured == 'true'
         id: plan
         run: terraform plan -no-color -input=false
         continue-on-error: true   # post comment even when plan fails
 
       # ── Sticky PR comment ─────────────────────────────────────────────────
       - name: Post plan as PR comment
+        if: steps.aws-config.outputs.configured == 'true'
         uses: actions/github-script@v7
         env:
           PLAN_STDOUT: ${{ steps.plan.outputs.stdout }}
@@ -140,5 +164,5 @@ jobs:
 
       # Fail the job if the plan itself failed (after comment is posted).
       - name: Check plan status
-        if: steps.plan.outcome == 'failure'
+        if: steps.aws-config.outputs.configured == 'true' && steps.plan.outcome == 'failure'
         run: exit 1
