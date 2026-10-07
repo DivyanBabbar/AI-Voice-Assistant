@@ -1,0 +1,25 @@
+# LiveKit server development configuration
+#
+# WARNING: THIS FILE IS FOR LOCAL DEVELOPMENT ONLY.
+# "devkey" / "devsecret" are placeholder credentials — NEVER use them in
+# staging or production.  Replace with secrets from a secret manager.
+
+port: 7880
+
+# RTC / ICE config for local development.
+# node_ip forces LiveKit to advertise 127.0.0.1 in ICE candidates so the
+# browser (on the host) can reach the Docker-mapped RTC ports.
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+  node_ip: 127.0.0.1
+
+# API key / secret pairs used to mint access tokens.
+# Add more pairs here for rotation; the SDK accepts any matching pair.
+keys:
+  devkey: devsecret
+
+logging:
+  json: false
+  level: info

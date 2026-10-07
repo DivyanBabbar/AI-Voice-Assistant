@@ -39,8 +39,8 @@ text-to-speech — all with sub-2-second round-trip latency.
 
 ```bash
 # 1. Clone
-git clone https://github.com/arnavadarsh/voicebot.git
-cd voicebot
+git clone https://github.com/DivyanBabbar/AI-Voice-Assistant.git
+cd AI-Voice-Assistant
 
 # 2. Install dependencies (creates an isolated .venv automatically)
 poetry install
@@ -120,7 +120,7 @@ and [demos/day-4.md](demos/day-4.md) for full details.
 ## Repo layout
 
 ```
-voicebot/
+AI-Voice-Assistant/
 ├── src/
 │   └── voiceai/
 │       ├── agents/        # LiveKit voice agent definitions

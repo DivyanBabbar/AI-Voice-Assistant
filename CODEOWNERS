@@ -1,0 +1,12 @@
+# CODEOWNERS — every PR requires approval from the repo owner.
+# Syntax: <pattern> <owner...>
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for every file not matched by a more-specific rule below.
+* @DivyanBabbar
+
+# Workflow files require explicit owner sign-off to prevent supply-chain attacks.
+.github/ @DivyanBabbar
+
+# Infrastructure changes carry production risk — owner must review.
+infra/ @DivyanBabbar

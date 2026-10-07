@@ -1,0 +1,22 @@
+version: "3.9"
+
+# WARNING: dev-only credentials ("devkey" / "devsecret").
+# Never expose this compose file to a production network.
+
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --config /etc/livekit/livekit.yaml --dev
+    ports:
+      - "7880:7880"       # WebSocket / HTTP API
+      - "7881:7881"       # TURN over TCP
+      - "7882:7882/udp"   # RTC over UDP
+    volumes:
+      - ./livekit.yaml:/etc/livekit/livekit.yaml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7880/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

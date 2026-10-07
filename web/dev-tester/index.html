@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LiveKit Dev Tester</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!--
+    livekit-client v2.5.3 — UMD bundle, exposes window.LivekitClient.
+    Pin the version here if you need to upgrade.
+  -->
+  <script src="https://unpkg.com/livekit-client@2.19.0/dist/livekit-client.umd.js"></script>
+</head>
+<body>
+  <div class="container">
+
+    <header>
+      <h1>LiveKit Dev Tester</h1>
+      <p class="subtitle">Hindi-first Voice AI &mdash; local mic / speaker verification</p>
+    </header>
+
+    <!-- Main controls card -->
+    <section class="card">
+
+      <!-- Live status indicator -->
+      <div class="status-bar">
+        <span class="dot" id="status-dot"></span>
+        <span id="status">Disconnected</span>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="controls">
+        <button id="btn-join">Join room</button>
+        <button id="btn-leave" disabled>Leave room</button>
+        <button id="btn-mute" disabled>Mute mic</button>
+      </div>
+
+      <!-- VU meter driven by AudioContext AnalyserNode -->
+      <div class="vu-section">
+        <span class="vu-label">Mic level</span>
+        <div class="vu-track">
+          <div class="vu-bar" id="vu-bar"></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Streaming event log -->
+    <section class="card log-card">
+      <h2>Event log</h2>
+      <div id="log" role="log" aria-live="polite"></div>
+    </section>
+
+  </div>
+
+  <!--
+    main.js is a module so it has its own strict-mode scope.
+    LivekitClient (set on window by the UMD script above) is accessible
+    as a global from within the module.
+  -->
+  <script type="module" src="main.js"></script>
+</body>
+</html>
